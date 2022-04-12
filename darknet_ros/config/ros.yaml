@@ -1,7 +1,7 @@
 subscribers:
 
   camera_reading:
-    topic: /camera/rgb/image_raw
+    topic: /zed_node/left/image_rect_color
     queue_size: 1
 
 actions:
@@ -31,3 +31,4 @@ image_view:
   enable_opencv: true
   wait_key_delay: 1
   enable_console_output: true
+  use_darknet: true

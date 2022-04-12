@@ -1,3 +1,9 @@
+image_view:
+
+  enable_opencv: true
+  wait_key_delay: 1
+  use_darknet: true
+
 yolo_model:
 
   config_file:

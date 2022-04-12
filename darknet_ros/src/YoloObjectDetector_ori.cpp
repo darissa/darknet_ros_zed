@@ -18,19 +18,12 @@ std::string darknetFilePath_ = DARKNET_FILE_PATH;
 #error Path of darknet repository is not defined in CMakeLists.txt.
 #endif
 
-static float get_pixel(image m, int x, int y, int c)
-{
-    assert(x < m.w && y < m.h && c < m.c);
-    return m.data[c*m.h*m.w + y*m.w + x];
-}
-
 namespace darknet_ros {
 
 char *cfg;
 char *weights;
 char *data;
 char **detectionNames;
-sem_t sem_new_image_; // Semaphore to indicate new image
 
 YoloObjectDetector::YoloObjectDetector(ros::NodeHandle nh)
     : nodeHandle_(nh),
@@ -57,7 +50,6 @@ YoloObjectDetector::~YoloObjectDetector()
     isNodeRunning_ = false;
   }
   yoloThread_.join();
-  sem_destroy(&sem_new_image_);
 }
 
 bool YoloObjectDetector::readParameters()
@@ -65,7 +57,7 @@ bool YoloObjectDetector::readParameters()
   // Load common parameters.
   nodeHandle_.param("image_view/enable_opencv", viewImage_, true);
   nodeHandle_.param("image_view/wait_key_delay", waitKeyDelay_, 3);
-  nodeHandle_.param("image_view/enable_console_output", enableConsoleOutput_, true);
+  nodeHandle_.param("image_view/enable_console_output", enableConsoleOutput_, false);
 
   // Check if Xserver is running on Linux.
   if (XOpenDisplay(NULL)) {
@@ -96,9 +88,6 @@ void YoloObjectDetector::init()
   std::string dataPath;
   std::string configModel;
   std::string weightsModel;
-
-  // Initialize semaphore
-  sem_init(&sem_new_image_, 0, 0);
 
   // Threshold of object detection.
   float thresh;
@@ -152,9 +141,7 @@ void YoloObjectDetector::init()
   std::string labelImageTopicName;
   int labelImageQueueSize;
   bool labelImageLatch;
-  std::string ns;
 
-  nodeHandle_.getParam("namespace", ns);
   nodeHandle_.param("subscribers/camera_reading/topic", cameraTopicName,
                     std::string("/camera/image_raw"));
   nodeHandle_.param("subscribers/camera_reading/queue_size", cameraQueueSize, 1);
@@ -175,13 +162,6 @@ void YoloObjectDetector::init()
   nodeHandle_.param("publishers/label_image/queue_size", labelImageQueueSize, 1);
   nodeHandle_.param("publishers/label_image/latch", labelImageLatch, true);
 
-  if(ns.length() > 0) {
-    cameraTopicName         = "/" + ns + "/" + cameraTopicName;
-    objectDetectorTopicName = "/" + ns + "/" + objectDetectorTopicName;
-    boundingBoxesTopicName  = "/" + ns + "/" + boundingBoxesTopicName;
-    detectionImageTopicName = "/" + ns + "/" + detectionImageTopicName;
-  } //+wana
-
   imageSubscriber_ = imageTransport_.subscribe(cameraTopicName, cameraQueueSize,
                                                &YoloObjectDetector::cameraCallback, this);
   objectPublisher_ = nodeHandle_.advertise<std_msgs::Int8>(objectDetectorTopicName,
@@ -195,8 +175,6 @@ void YoloObjectDetector::init()
   labelImagePublisher_ = nodeHandle_.advertise<sensor_msgs::Image>(labelImageTopicName,
 								   labelImageQueueSize,
 								   labelImageLatch);
-
-  ROS_INFO("Waiting for images in topic: %s", imageSubscriber_.getTopic().c_str()); //+wana
 
   // Action servers.
   std::string checkForObjectsActionName;
@@ -236,7 +214,6 @@ void YoloObjectDetector::cameraCallback(const sensor_msgs::ImageConstPtr& msg)
     }
     frameWidth_ = cam_image->image.size().width;
     frameHeight_ = cam_image->image.size().height;
-    sem_post(&sem_new_image_);
   }
   return;
 }
@@ -482,46 +459,7 @@ void *YoloObjectDetector::fetchInThread()
 
 void *YoloObjectDetector::displayInThread(void *ptr)
 {
-  //show_image_cv(buff_[(buffIndex_ + 1)%3], "YOLO V3", ipl_);
-  //+wana//
-  image p = buff_[(buffIndex_ + 1)%3];
-  std::string name = "YOLO V3";
-  IplImage *disp = ipl_;
-  int x,y,k;
-  if(p.c == 3) rgbgr_image(p);
-  //normalize_image(copy);
-
-  char buff[256];
-  //sprintf(buff, "%s (%d)", name, windows);
-  sprintf(buff, "%s", name.c_str());
-
-  int step = disp->widthStep;
-
-  for(y = 0; y < p.h; ++y){
-      for(x = 0; x < p.w; ++x){
-          for(k= 0; k < p.c; ++k){
-              disp->imageData[y*step + x*p.c + k] = (unsigned char)(get_pixel(p,x,y,k)*255);
-          }
-      }
-  }
-  if(0){
-      int w = 448;
-      int h = w*p.h/p.w;
-      if(h > 1000){
-          h = 1000;
-          w = h*p.w/p.h;
-      }
-      IplImage *buffer = disp;
-      disp = cvCreateImage(cvSize(w, h), buffer->depth, buffer->nChannels);
-      cvResize(buffer, disp, CV_INTER_LINEAR);
-      cvReleaseImage(&buffer);
-  }
-  if (viewImage_) {
-      cvNamedWindow(buff, CV_WINDOW_NORMAL); 
-      cvShowImage(buff, disp);
-  }
-  //+wana//
-
+  show_image_cv(buff_[(buffIndex_ + 1)%3], "YOLO V3", ipl_);
   int c = cvWaitKey(waitKeyDelay_);
   if (c != -1) c = c%256;
   if (c == 27) {
@@ -630,16 +568,15 @@ void YoloObjectDetector::yolo()
   demoTime_ = what_time_is_it_now();
 
   while (!demoDone_) {
-    sem_wait(&sem_new_image_); //+wana
     buffIndex_ = (buffIndex_ + 1) % 3;
     fetch_thread = std::thread(&YoloObjectDetector::fetchInThread, this);
     detect_thread = std::thread(&YoloObjectDetector::detectInThread, this);
     if (!demoPrefix_) {
       fps_ = 1./(what_time_is_it_now() - demoTime_);
       demoTime_ = what_time_is_it_now();
-      // if (viewImage_) {
+      if (viewImage_) {
         displayInThread(0);
-      // }
+      }
       publishInThread();
     } else {
       char name[256];

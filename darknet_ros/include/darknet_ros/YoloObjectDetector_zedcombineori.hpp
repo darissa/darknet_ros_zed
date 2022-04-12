@@ -113,7 +113,12 @@ class YoloObjectDetector
   /*!
    * Callback of camera.
    * @param[in] msg image pointer.
-   */  
+   * @param[in] img_msg bgr image pointer. //wana++
+   * @param[in] dmap_msg depth map pointer. //wana++
+   */
+  void zedCameraCallback(const sensor_msgs::ImageConstPtr& img_msg,
+                         const sensor_msgs::ImageConstPtr& dmap_msg
+  );
   void cameraCallback(const sensor_msgs::ImageConstPtr& msg);
 
   /*!
@@ -157,9 +162,17 @@ class YoloObjectDetector
   image_transport::ImageTransport imageTransport_;
 
   //! ROS subscriber and publisher.
+  image_transport::SubscriberFilter imagezedSubscriber_; //wana++
+  image_transport::SubscriberFilter dmapSubscriber_; 	//wana++
   image_transport::Subscriber imageSubscriber_;
   ros::Publisher objectPublisher_;
   ros::Publisher boundingBoxesPublisher_;
+
+  // Topic synchronization //wana++
+  typedef message_filters::sync_policies::ApproximateTime<
+    sensor_msgs::Image, sensor_msgs::Image
+  > ApproxTimePolicy;
+  message_filters::Synchronizer<ApproxTimePolicy> imgSync_;
 
   //! Detected objects.
   std::vector<std::vector<RosBox_> > rosBoxes_;
@@ -169,6 +182,7 @@ class YoloObjectDetector
   //! Camera related parameters.
   int frameWidth_;
   int frameHeight_;
+  bool zed;
 
   //! Publisher of the bounding box image.
   ros::Publisher detectionImagePublisher_;
@@ -216,6 +230,7 @@ class YoloObjectDetector
 
   std_msgs::Header imageHeader_;
   cv::Mat camImageCopy_;
+  cv::Mat camDmapCopy_; //wana++
   boost::shared_mutex mutexImageCallback_;
 
   bool imageStatus_ = false;
@@ -234,6 +249,8 @@ class YoloObjectDetector
   void rememberNetwork(network *net);
 
   detection *avgPredictions(network *net, int *nboxes);
+
+  float getObjDepth(float xmin, float xmax, float ymin, float ymax); //wana++
 
   void *detectInThread();
 

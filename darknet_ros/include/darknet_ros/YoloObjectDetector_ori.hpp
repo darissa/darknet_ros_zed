@@ -16,8 +16,6 @@
 #include <pthread.h>
 #include <thread>
 #include <chrono>
-#include <semaphore.h>//wana++
-#include <algorithm>//wana++
 
 // ROS
 #include <ros/ros.h>
@@ -28,13 +26,6 @@
 #include <sensor_msgs/Image.h>
 #include <geometry_msgs/Point.h>
 #include <image_transport/image_transport.h>
-#include <image_transport/subscriber.h> //wana++
-#include <image_transport/publisher.h> //wana++
-#include <image_transport/camera_subscriber.h> //wana++
-#include <image_transport/camera_publisher.h> //wana++
-#include <image_transport/subscriber_filter.h> //wana++
-#include <message_filters/synchronizer.h> //wana++
-#include <message_filters/sync_policies/approximate_time.h> //wana++
 
 // OpenCv
 #include <opencv2/imgproc/imgproc.hpp>
@@ -113,7 +104,7 @@ class YoloObjectDetector
   /*!
    * Callback of camera.
    * @param[in] msg image pointer.
-   */  
+   */
   void cameraCallback(const sensor_msgs::ImageConstPtr& msg);
 
   /*!
